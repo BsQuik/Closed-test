@@ -1,0 +1,76 @@
+
+body 
+{
+     font-family: system-ui, sans-serif;
+      max-width: 600px; 
+      margin: 40px auto; 
+      background:#1c1c28; 
+      color:#eee; 
+}
+h1   
+{
+     color: #ffd12e; 
+}
+input, button 
+{
+     font-size: 16px; 
+     padding: 8px; 
+     border-radius: 6px; 
+     border: none; 
+}
+input 
+{
+     width: 220px; 
+}
+button 
+{ 
+    background:#ffd12e; 
+    cursor:pointer; 
+    font-weight:bold; 
+}
+#result 
+{ 
+    margin-top: 20px; 
+    background:#2a2a3a; 
+    padding: 16px; 
+    border-radius: 8px; 
+    white-space: pre-wrap; 
+}
+.error 
+{ 
+    color:#ff6b6b; 
+}
+.card 
+{
+     display:flex; 
+     gap:20px; 
+     align-items:center; 
+}
+.stat 
+{ 
+    background:#333; 
+    padding:8px 12px; 
+    border-radius:6px; 
+}
+.pfp 
+{
+display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 45%;
+  max-width: 100%;
+}
+.brawler-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap:12px; margin-top:16px; }
+  .brawler-item { text-align:center; font-size:12px; }
+  .brawler-item img { width:64px; height:64px; border-radius:8px; background:#333; }
+
+  /* body { font-family: system-ui, sans-serif; max-width: 600px; margin: 40px auto; background:#1c1c28; color:#eee; }
+  h1 { color: #ffd12e; }
+  input, button { font-size: 16px; padding: 8px; border-radius: 6px; border: none; }
+  input { width: 220px; }
+  button { background:#ffd12e; cursor:pointer; font-weight:bold; }
+  #result { margin-top: 20px; background:#2a2a3a; padding: 16px; border-radius: 8px; white-space: pre-wrap; }
+  .error { color:#ff6b6b; }
+  .card { display:flex; gap:20px; align-items:center; }
+  .stat { background:#333; padding:8px 12px; border-radius:6px; }
+   */
