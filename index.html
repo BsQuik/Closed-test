@@ -6,6 +6,8 @@
 <title>Brawl Stars — Player Lookup</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+   <link rel="icon" type="image/svg+xml" href="favicom.png">
+    <link rel="alternate icon" href="favicom.png">
 <style>
   :root {
     --bg: #14121f;
@@ -327,6 +329,33 @@
   .member-role.senior { background: var(--surface-3); color: var(--text); }
   .member-name { font-weight: 600; font-size: 13px; flex: 1; min-width: 0; }
   .member-trophies { font-size: 12px; color: var(--gold); font-weight: 700; }
+
+  /* ---------- Ultimi cercati (localStorage) ---------- */
+  .chip-remove-btn {
+    background: none; border: none; color: var(--text-muted);
+    font-size: 12px; cursor: pointer; padding: 2px 6px; margin-left: auto;
+    border-radius: 6px; flex-shrink: 0; line-height: 1;
+  }
+  .chip-remove-btn:hover { color: var(--magenta); background: rgba(255,77,141,0.12); }
+
+  /* ---------- Ricerca per nome / autocomplete ---------- */
+  .search-input-wrap { position: relative; width: 220px; }
+  .search-input-wrap input { width: 100%; }
+  .suggestions-box {
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+    z-index: 30; text-align: left; display: none; max-height: 260px; overflow-y: auto;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  }
+  .suggestions-box.is-open { display: block; }
+  .suggestion-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer;
+  }
+  .suggestion-item:hover, .suggestion-item.is-active { background: var(--surface-3); }
+  .suggestion-item img { width: 26px; height: 26px; border-radius: 50%; background: var(--surface); flex-shrink: 0; }
+  .suggestion-item .s-name { font-size: 12.5px; font-weight: 600; }
+  .suggestion-item .s-tag { font-size: 10.5px; color: var(--text-muted); font-family: monospace; }
+  .suggestion-empty { padding: 10px 12px; font-size: 12px; color: var(--text-muted); }
 </style>
 </head>
 <body>
@@ -349,7 +378,13 @@
       <h2>Cerca un giocatore</h2>
       <p>Inserisci il player tag per vedere trofei, brawler, gear e battaglie recenti</p>
       <div class="hero-search-row">
-        <input type="text" id="playerTag" placeholder="#2PP" onkeydown="if(event.key==='Enter') cercaGiocatore()">
+        <div class="search-input-wrap">
+          <input type="text" id="playerTag" placeholder="#2PP oppure nome giocatore" autocomplete="off"
+                 oninput="gestisciInputRicerca(this.value)"
+                 onkeydown="gestisciTastoRicerca(event)"
+                 onfocus="gestisciInputRicerca(this.value)">
+          <div class="suggestions-box" id="suggestionsBox"></div>
+        </div>
         <button class="btn btn-primary" onclick="cercaGiocatore()">Cerca</button>
       </div>
     </div>
@@ -363,11 +398,22 @@
       ============================================================
     -->
     <div class="saved-players-bar" id="savedPlayers">
-      <div class="saved-player-chip" data-tag="#P8PLQJRY9"></div>
-      <div class="saved-player-chip" data-tag="#P8PLQJRY9"></div>
+      <div class="saved-player-chip" data-tag="#7404704"></div>
       <div class="saved-player-chip" data-tag="#2PP"></div>
       <!-- Aggiungi qui altre righe come queste due -->
     </div>
+
+    <!--
+      ============================================================
+      ULTIMI CERCATI — generata automaticamente dal localStorage,
+      non serve modificare nulla qui a mano.
+      ============================================================
+    -->
+    <div class="section-label" id="recentSearchesLabel" style="display:none;">
+      <span>⏱️ Ultimi cercati</span>
+      <button class="btn btn-secondary" style="margin-left:auto; padding:4px 10px; font-size:11px;" onclick="cancellaRicercheRecenti()">Cancella tutto</button>
+    </div>
+    <div class="saved-players-bar" id="recentSearches"></div>
 
     <div id="result"></div>
   </div>
@@ -713,6 +759,13 @@ async function mostraBrawler() {
 let ultimoPlayerData = null;
 let ordinamentoCorrente = 'trophies';
 
+// Indice di tutti i giocatori "conosciuti" dal sito (salvati + cercati in
+// precedenza): serve solo per suggerire nomi mentre si digita, perché
+// l'API ufficiale di Brawl Stars non permette di cercare per nome, solo
+// per tag esatto.
+let giocatoriConosciuti = [];
+let suggerimentoAttivo = -1;
+
 function renderBrawlerDetails(brawlers) {
   if (!brawlers.length) {
     return '<p class="loading">Nessun dato sui brawler disponibile.</p>';
@@ -776,6 +829,173 @@ function cambiaOrdinamento(valore) {
 }
 
 // ============================================================
+// ULTIMI CERCATI (localStorage)
+// ============================================================
+const LS_RICERCHE_RECENTI = 'bsLookup_ricercheRecenti';
+const MAX_RICERCHE_RECENTI = 10;
+
+function leggiRicercheRecenti() {
+  try {
+    const raw = localStorage.getItem(LS_RICERCHE_RECENTI);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function salvaRicercaRecente(p) {
+  if (!p || !p.tag) return;
+  const iconId = p.icon && p.icon.id ? p.icon.id : null;
+  const entry = { tag: p.tag, name: p.name, trophies: p.trophies, iconId, ts: Date.now() };
+
+  let lista = leggiRicercheRecenti().filter(x => x.tag !== entry.tag);
+  lista.unshift(entry);
+  lista = lista.slice(0, MAX_RICERCHE_RECENTI);
+
+  try { localStorage.setItem(LS_RICERCHE_RECENTI, JSON.stringify(lista)); } catch (e) {}
+
+  aggiornaGiocatoreConosciuto(entry);
+  renderRicercheRecenti();
+}
+
+function rimuoviRicercaRecente(tag, evt) {
+  if (evt) evt.stopPropagation();
+  const lista = leggiRicercheRecenti().filter(x => x.tag !== tag);
+  try { localStorage.setItem(LS_RICERCHE_RECENTI, JSON.stringify(lista)); } catch (e) {}
+  renderRicercheRecenti();
+}
+
+function cancellaRicercheRecenti() {
+  if (!confirm('Cancellare tutta la cronologia degli ultimi cercati?')) return;
+  try { localStorage.removeItem(LS_RICERCHE_RECENTI); } catch (e) {}
+  renderRicercheRecenti();
+}
+
+function renderRicercheRecenti() {
+  const lista = leggiRicercheRecenti();
+  const wrap = document.getElementById('recentSearches');
+  const label = document.getElementById('recentSearchesLabel');
+  if (!wrap || !label) return;
+
+  if (!lista.length) {
+    wrap.innerHTML = '';
+    label.style.display = 'none';
+    return;
+  }
+
+  label.style.display = 'flex';
+  wrap.innerHTML = lista.map(p => {
+    const avatarUrl = p.iconId ? `https://cdn.brawlify.com/profile-icons/regular/${p.iconId}.png` : '';
+    return `
+      <div class="saved-player-chip" data-tag="${escapeAttr(p.tag)}" onclick="cercaGiocatoreTag('${p.tag}')">
+        <img class="avatar-sm" src="${avatarUrl}" alt="${escapeAttr(p.name)}" onerror="this.style.visibility='hidden'">
+        <div class="info">
+          <div class="name">${escapeAttr(p.name)}</div>
+          <div class="sub">🏆 <span class="n">${p.trophies ?? '?'}</span></div>
+        </div>
+        <button class="chip-remove-btn" title="Rimuovi dalla cronologia" onclick="rimuoviRicercaRecente('${p.tag}', event)">✕</button>
+      </div>
+    `;
+  }).join('');
+}
+
+// ============================================================
+// RICERCA PER NOME (autocomplete sui giocatori conosciuti)
+// ============================================================
+function aggiornaGiocatoreConosciuto(p) {
+  if (!p || !p.tag || !p.name) return;
+  const iconId = (p.icon && p.icon.id) ? p.icon.id : (p.iconId ?? null);
+  const entry = { tag: p.tag, name: p.name, trophies: p.trophies, iconId };
+  giocatoriConosciuti = giocatoriConosciuti.filter(g => g.tag !== entry.tag);
+  giocatoriConosciuti.unshift(entry);
+}
+
+function gestisciInputRicerca(valore) {
+  const box = document.getElementById('suggestionsBox');
+  suggerimentoAttivo = -1;
+  const q = valore.trim();
+
+  if (!q || q.startsWith('#')) {
+    box.classList.remove('is-open');
+    box.innerHTML = '';
+    return;
+  }
+
+  const qLower = q.toLowerCase();
+  const risultati = giocatoriConosciuti
+    .filter(g => g.name && g.name.toLowerCase().includes(qLower))
+    .slice(0, 6);
+
+  if (!risultati.length) {
+    box.innerHTML = `<div class="suggestion-empty">Nessun giocatore con questo nome nella cronologia. Prova a cercare per tag esatto (es. #2PP).</div>`;
+    box.classList.add('is-open');
+    return;
+  }
+
+  box.innerHTML = risultati.map(g => {
+    const avatarUrl = g.iconId ? `https://cdn.brawlify.com/profile-icons/regular/${g.iconId}.png` : '';
+    return `
+      <div class="suggestion-item" onclick="selezionaSuggerimento('${g.tag}')">
+        <img src="${avatarUrl}" alt="${escapeAttr(g.name)}" onerror="this.style.visibility='hidden'">
+        <div>
+          <div class="s-name">${escapeAttr(g.name)}</div>
+          <div class="s-tag">${escapeAttr(g.tag)} · 🏆 ${g.trophies ?? '?'}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  box.classList.add('is-open');
+}
+
+function selezionaSuggerimento(tag) {
+  chiudiSuggerimenti();
+  cercaGiocatoreTag(tag);
+}
+
+function chiudiSuggerimenti() {
+  const box = document.getElementById('suggestionsBox');
+  if (!box) return;
+  box.classList.remove('is-open');
+  box.innerHTML = '';
+  suggerimentoAttivo = -1;
+}
+
+function aggiornaEvidenziazioneSuggerimenti(items) {
+  items.forEach((el, i) => el.classList.toggle('is-active', i === suggerimentoAttivo));
+}
+
+function gestisciTastoRicerca(event) {
+  const box = document.getElementById('suggestionsBox');
+  const items = box ? box.querySelectorAll('.suggestion-item') : [];
+
+  if (event.key === 'ArrowDown' && items.length) {
+    event.preventDefault();
+    suggerimentoAttivo = Math.min(suggerimentoAttivo + 1, items.length - 1);
+    aggiornaEvidenziazioneSuggerimenti(items);
+  } else if (event.key === 'ArrowUp' && items.length) {
+    event.preventDefault();
+    suggerimentoAttivo = Math.max(suggerimentoAttivo - 1, 0);
+    aggiornaEvidenziazioneSuggerimenti(items);
+  } else if (event.key === 'Enter') {
+    if (suggerimentoAttivo >= 0 && items[suggerimentoAttivo]) {
+      event.preventDefault();
+      items[suggerimentoAttivo].click();
+    } else {
+      chiudiSuggerimenti();
+      cercaGiocatore();
+    }
+  } else if (event.key === 'Escape') {
+    chiudiSuggerimenti();
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const wrap = document.querySelector('.search-input-wrap');
+  if (wrap && !wrap.contains(e.target)) chiudiSuggerimenti();
+});
+
+// ============================================================
 // PERSONE SALVATE
 // ============================================================
 function cercaGiocatoreTag(tag) {
@@ -811,6 +1031,7 @@ async function initSavedPlayers() {
       const iconId = p.icon && p.icon.id ? p.icon.id : null;
       const avatarUrl = iconId ? `https://cdn.brawlify.com/profile-icons/regular/${iconId}.png` : '';
 
+      aggiornaGiocatoreConosciuto(p);
       chip.classList.remove('is-loading');
       chip.innerHTML = `
         <img class="avatar-sm" src="${avatarUrl}" alt="${escapeAttr(p.name)}" onerror="this.style.visibility='hidden'">
@@ -833,7 +1054,11 @@ async function initSavedPlayers() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', initSavedPlayers);
+document.addEventListener('DOMContentLoaded', () => {
+  giocatoriConosciuti = leggiRicercheRecenti().map(p => ({ tag: p.tag, name: p.name, trophies: p.trophies, iconId: p.iconId }));
+  renderRicercheRecenti();
+  initSavedPlayers();
+});
 
 function copiaTag(tag, btn) {
   navigator.clipboard.writeText(tag).then(() => {
@@ -849,12 +1074,33 @@ function copiaTag(tag, btn) {
 // RICERCA GIOCATORE PRINCIPALE
 // ============================================================
 async function cercaGiocatore() {
-  const tag = document.getElementById('playerTag').value.trim();
+  chiudiSuggerimenti();
+  const valoreInput = document.getElementById('playerTag').value.trim();
   const resultDiv = document.getElementById('result');
 
-  if (!tag) {
-    resultDiv.innerHTML = '<p class="error">Inserisci un tag valido.</p>';
+  if (!valoreInput) {
+    resultDiv.innerHTML = '<p class="error">Inserisci un tag o un nome valido.</p>';
     return;
+  }
+
+  let tag = valoreInput;
+
+  // Se non è un tag (non inizia con #), provo a risolvere il nome
+  // usando i giocatori già noti al sito (salvati + cercati in passato).
+  if (!tag.startsWith('#')) {
+    const qLower = tag.toLowerCase();
+    const esatte = giocatoriConosciuti.filter(g => g.name && g.name.toLowerCase() === qLower);
+    const corrispondenze = esatte.length ? esatte : giocatoriConosciuti.filter(g => g.name && g.name.toLowerCase().includes(qLower));
+
+    if (corrispondenze.length === 1) {
+      tag = corrispondenze[0].tag;
+    } else if (corrispondenze.length > 1) {
+      resultDiv.innerHTML = `<p class="error">Più giocatori corrispondono a "${escapeAttr(valoreInput)}": scegli un suggerimento dall'elenco mentre digiti, oppure cerca per tag esatto.</p>`;
+      return;
+    } else {
+      resultDiv.innerHTML = `<p class="error">Nessun giocatore con questo nome nella cronologia. Cerca per tag esatto (es. #2PP).</p>`;
+      return;
+    }
   }
 
   resultDiv.innerHTML = '<p class="loading">Caricamento…</p>';
@@ -881,6 +1127,7 @@ async function cercaGiocatore() {
 
     const p = json.data;
     ultimoPlayerData = p;
+    salvaRicercaRecente(p);
     const safe = (v) => (v === undefined || v === null) ? 'N/D' : v;
 
     const iconId = p.icon && p.icon.id ? p.icon.id : null;
