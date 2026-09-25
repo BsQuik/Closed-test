@@ -1,11 +1,18 @@
 <?php
-// Impedisce a PHP di stampare errori/warning nell'output (romperebbero il JSON).
-// Gli errori vengono comunque salvati nel log di sistema per debug.
 ini_set('display_errors', '0');
 error_reporting(E_ALL);
 
-// Se qualcosa va storto in modo catastrofico, questo garantisce comunque JSON valido
-// invece di una pagina HTML di errore che il frontend non sa interpretare.
+session_start();
+require_once __DIR__ . '/auth.php';
+
+// Se l'utente non è autenticato, blocca le chiamate API
+if (!isAuthenticated()) {
+    http_response_code(401);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['ok' => false, 'error' => 'Accesso non autorizzato. Effettua il login.']);
+    exit;
+}
+
 set_exception_handler(function ($e) {
     http_response_code(500);
     header('Content-Type: application/json; charset=utf-8');
@@ -33,7 +40,6 @@ $tag = $_GET['tag'] ?? '';
 
 $api = new BrawlApi();
 
-// L'azione 'brawlers' non richiede un tag giocatore: gestiamola prima del controllo.
 if ($action === 'brawlers') {
     $result = $api->getBrawlers();
     http_response_code($result['status'] > 0 ? $result['status'] : 500);
