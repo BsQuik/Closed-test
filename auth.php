@@ -10,7 +10,7 @@ $login_error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'login') {
     $entered_password = $_POST['password'] ?? '';
     
-}
+
 $ACCESS_PASSWORd= getenv('ACCESS_PASSWORD');
 
 
