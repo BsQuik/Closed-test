@@ -10,7 +10,11 @@ $login_error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'login') {
     $entered_password = $_POST['password'] ?? '';
     
-    if ($entered_password === $ACCESS_PASSWORD) {
+}
+$ACCESS_PASSWORd= getenv('ACCESS_PASSWORD');
+
+
+    if ($entered_password === $ACCESS_PASSWORd) {
         $_SESSION['authenticated'] = true;
         header('Location: ' . $_SERVER['PHP_SELF']);
         exit;
