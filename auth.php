@@ -16,6 +16,7 @@ $ACCESS_PASSWORd= getenv('ACCESS_PASSWORD');
 
     if ($entered_password === $ACCESS_PASSWORd) {
         $_SESSION['authenticated'] = true;
+        $_SESSION['isAthenticated'] = true;
         header('Location: ' . $_SERVER['PHP_SELF']);
         exit;
     } else {
