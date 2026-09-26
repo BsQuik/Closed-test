@@ -1,65 +1,7 @@
 <?php
-// ============================================================
-// LUCCHETTO DI ACCESSO — protegge tutta la pagina con una password
-// ============================================================
-session_start();
+require_once __DIR__ . '/auth.php';
 
-// --- Configurazione: cambia questi due valori prima di metterlo online ---
-define('BS_LOOKUP_PASSWORD', 'brawl2026');                                   // la password richiesta
-define('BS_LOOKUP_SECRET', 'cambia-questa-chiave-segreta-lunga-e-casuale');  // firma il cookie "ricordami"
-
-define('BS_LOOKUP_COOKIE', 'bs_lookup_auth');
-define('BS_LOOKUP_COOKIE_DAYS', 30); // per quanti giorni restare collegati senza reinserire la password
-
-function bsLookupToken() {
-    return hash_hmac('sha256', 'authenticated', BS_LOOKUP_SECRET);
-}
-
-function bsLookupIsAuthenticated() {
-    if (!empty($_SESSION['bs_lookup_auth'])) {
-        return true;
-    }
-    if (isset($_COOKIE[BS_LOOKUP_COOKIE]) && hash_equals(bsLookupToken(), (string) $_COOKIE[BS_LOOKUP_COOKIE])) {
-        $_SESSION['bs_lookup_auth'] = true;
-        return true;
-    }
-    return false;
-}
-
-// --- Logout (link "Esci" nella topbar) ---
-if (isset($_GET['logout'])) {
-    $_SESSION = [];
-    session_destroy();
-    setcookie(BS_LOOKUP_COOKIE, '', [
-        'expires'  => time() - 3600,
-        'path'     => '/',
-        'httponly' => true,
-        'samesite' => 'Lax',
-    ]);
-    header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));
-    exit;
-}
-
-// --- Verifica della password inviata dal modulo ---
-$bsLookupErrore = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bs_lookup_password'])) {
-    if (hash_equals(BS_LOOKUP_PASSWORD, (string) $_POST['bs_lookup_password'])) {
-        $_SESSION['bs_lookup_auth'] = true;
-        setcookie(BS_LOOKUP_COOKIE, bsLookupToken(), [
-            'expires'  => time() + 60 * 60 * 24 * BS_LOOKUP_COOKIE_DAYS,
-            'path'     => '/',
-            'httponly' => true,
-            'samesite' => 'Lax',
-            // 'secure' => true, // scommenta se il sito è servito in HTTPS
-        ]);
-        header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));
-        exit;
-    }
-    $bsLookupErrore = 'Password errata, riprova.';
-}
-
-// --- Se non sei autenticato, mostra SOLO il lucchetto: il resto non viene mai inviato al browser ---
-if (!bsLookupIsAuthenticated()) {
+if (!isAuthenticated()):
 ?>
 <!DOCTYPE html>
 <html lang="it">
@@ -80,61 +22,66 @@ if (!bsLookupIsAuthenticated()) {
     margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
     background: var(--bg); color: var(--text); font-family: 'Nunito', system-ui, sans-serif; padding: 20px;
   }
-  .lock-card {
+  .login-card {
     width: min(340px, 100%);
     background: var(--surface);
     border: 3px solid var(--text); border-radius: 22px;
     padding: 34px 28px; text-align: center;
     box-shadow: 6px 6px 0 var(--text);
   }
-  .lock-icon {
+  .login-icon {
     width: 58px; height: 58px; border-radius: 50%; margin: 0 auto 14px;
     display: flex; align-items: center; justify-content: center; font-size: 26px;
     background: radial-gradient(circle at 30% 30%, #ffe9a8, var(--gold-dark));
     border: 2.5px solid var(--text);
   }
-  .lock-card h1 {
+  .login-card h2 {
     font-family: 'Baloo 2', sans-serif; font-size: 19px; margin: 0 0 4px; color: var(--text);
   }
-  .lock-card p.sub { color: var(--text-muted); font-size: 12.5px; margin: 0 0 22px; }
-  .lock-error {
+  .login-card p { color: var(--text-muted); font-size: 12.5px; margin: 0 0 22px; }
+  .error-msg {
     background: rgba(255,77,109,0.12); border: 2px solid var(--magenta); color: #c81e44;
     padding: 8px 12px; border-radius: 10px; font-size: 12.5px; margin-bottom: 14px; text-align: left;
     font-weight: 600;
   }
-  .lock-card input[type="password"] {
+  .input-field {
     width: 100%; background: var(--surface-2); border: 2.5px solid var(--text);
     color: var(--text); padding: 12px 14px; border-radius: 14px;
     font-size: 15px; text-align: center; font-weight: 700; margin-bottom: 14px;
   }
-  .lock-card input[type="password"]:focus { outline: none; border-color: #2f8fff; box-shadow: 0 0 0 3px rgba(47,143,255,0.25); }
-  .lock-card button {
+  .input-field:focus { outline: none; border-color: #2f8fff; box-shadow: 0 0 0 3px rgba(47,143,255,0.25); }
+  .btn-submit {
     width: 100%; border: 2px solid var(--text); border-radius: 999px; padding: 12px;
     font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 14px;
     cursor: pointer; background: var(--gold); color: var(--text);
     box-shadow: 3px 3px 0 var(--text); transition: transform .08s ease, box-shadow .08s ease;
   }
-  .lock-card button:active { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--text); }
-  .lock-hint { color: var(--text-muted); font-size: 10.5px; margin-top: 16px; }
+  .btn-submit:active { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--text); }
 </style>
 </head>
 <body>
-  <form class="lock-card" method="post" autocomplete="off">
-    <div class="lock-icon">🔒</div>
-    <h1>🥊 BS Lookup</h1>
-    <p class="sub">Accesso protetto — inserisci la password per continuare</p>
-    <?php if ($bsLookupErrore): ?>
-      <div class="lock-error"><?php echo htmlspecialchars($bsLookupErrore, ENT_QUOTES, 'UTF-8'); ?></div>
-    <?php endif; ?>
-    <input type="password" name="bs_lookup_password" placeholder="Password" autofocus required>
-    <button type="submit">Sblocca</button>
-    <div class="lock-hint">Resti collegato per <?php echo (int) BS_LOOKUP_COOKIE_DAYS; ?> giorni su questo dispositivo</div>
+
+<div class="login-card">
+  <div class="login-icon">🔒</div>
+  <h2>🥊 BS Lookup</h2>
+  <p>Accesso protetto — inserisci la password per continuare</p>
+
+  <?php if (!empty($login_error)): ?>
+    <div class="error-msg"><?= htmlspecialchars($login_error) ?></div>
+  <?php endif; ?>
+
+  <form method="POST" action="">
+    <input type="hidden" name="action" value="login">
+    <input type="password" name="password" class="input-field" placeholder="Password" required autofocus>
+    <button type="submit" class="btn-submit">Sblocca</button>
   </form>
+</div>
+
 </body>
 </html>
 <?php
-    exit;
-}
+exit;
+endif;
 ?>
 <!DOCTYPE html>
 <html lang="it">
