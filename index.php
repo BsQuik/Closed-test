@@ -506,8 +506,10 @@ endif;
       ============================================================
     -->
     <div class="saved-players-bar" id="savedPlayers">
-      <div class="saved-player-chip" data-tag="#7404704"></div>
       <div class="saved-player-chip" data-tag="#2PP"></div>
+      <div class="saved-player-chip" data-tag="#LGVY0QGP9"></div>
+       <div class="saved-player-chip" data-tag="#P8PLQJRY9"></div>
+      
       <!-- Aggiungi qui altre righe come queste due -->
     </div>
 
