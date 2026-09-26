@@ -1,7 +1,140 @@
 <?php
-require_once __DIR__ . '/auth.php';
+// ============================================================
+// LUCCHETTO DI ACCESSO — protegge tutta la pagina con una password
+// ============================================================
+session_start();
 
-if (!isAuthenticated()):
+// --- Configurazione: cambia questi due valori prima di metterlo online ---
+define('BS_LOOKUP_PASSWORD', 'brawl2026');                                   // la password richiesta
+define('BS_LOOKUP_SECRET', 'cambia-questa-chiave-segreta-lunga-e-casuale');  // firma il cookie "ricordami"
+
+define('BS_LOOKUP_COOKIE', 'bs_lookup_auth');
+define('BS_LOOKUP_COOKIE_DAYS', 30); // per quanti giorni restare collegati senza reinserire la password
+
+function bsLookupToken() {
+    return hash_hmac('sha256', 'authenticated', BS_LOOKUP_SECRET);
+}
+
+function bsLookupIsAuthenticated() {
+    if (!empty($_SESSION['bs_lookup_auth'])) {
+        return true;
+    }
+    if (isset($_COOKIE[BS_LOOKUP_COOKIE]) && hash_equals(bsLookupToken(), (string) $_COOKIE[BS_LOOKUP_COOKIE])) {
+        $_SESSION['bs_lookup_auth'] = true;
+        return true;
+    }
+    return false;
+}
+
+// --- Logout (link "Esci" nella topbar) ---
+if (isset($_GET['logout'])) {
+    $_SESSION = [];
+    session_destroy();
+    setcookie(BS_LOOKUP_COOKIE, '', [
+        'expires'  => time() - 3600,
+        'path'     => '/',
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));
+    exit;
+}
+
+// --- Verifica della password inviata dal modulo ---
+$bsLookupErrore = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bs_lookup_password'])) {
+    if (hash_equals(BS_LOOKUP_PASSWORD, (string) $_POST['bs_lookup_password'])) {
+        $_SESSION['bs_lookup_auth'] = true;
+        setcookie(BS_LOOKUP_COOKIE, bsLookupToken(), [
+            'expires'  => time() + 60 * 60 * 24 * BS_LOOKUP_COOKIE_DAYS,
+            'path'     => '/',
+            'httponly' => true,
+            'samesite' => 'Lax',
+            // 'secure' => true, // scommenta se il sito è servito in HTTPS
+        ]);
+        header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));
+        exit;
+    }
+    $bsLookupErrore = 'Password errata, riprova.';
+}
+
+// --- Se non sei autenticato, mostra SOLO il lucchetto: il resto non viene mai inviato al browser ---
+if (!bsLookupIsAuthenticated()) {
+?>
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accesso protetto — BS Lookup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #eff6ff; --surface: #ffffff; --surface-2: #f2f7fe;
+    --gold: #ffc629; --gold-dark: #e0a400;
+    --magenta: #ff4d6d; --text: #1e2a4a; --text-muted: #66759b; --border: #cfe0f7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: var(--bg); color: var(--text); font-family: 'Nunito', system-ui, sans-serif; padding: 20px;
+  }
+  .lock-card {
+    width: min(340px, 100%);
+    background: var(--surface);
+    border: 3px solid var(--text); border-radius: 22px;
+    padding: 34px 28px; text-align: center;
+    box-shadow: 6px 6px 0 var(--text);
+  }
+  .lock-icon {
+    width: 58px; height: 58px; border-radius: 50%; margin: 0 auto 14px;
+    display: flex; align-items: center; justify-content: center; font-size: 26px;
+    background: radial-gradient(circle at 30% 30%, #ffe9a8, var(--gold-dark));
+    border: 2.5px solid var(--text);
+  }
+  .lock-card h1 {
+    font-family: 'Baloo 2', sans-serif; font-size: 19px; margin: 0 0 4px; color: var(--text);
+  }
+  .lock-card p.sub { color: var(--text-muted); font-size: 12.5px; margin: 0 0 22px; }
+  .lock-error {
+    background: rgba(255,77,109,0.12); border: 2px solid var(--magenta); color: #c81e44;
+    padding: 8px 12px; border-radius: 10px; font-size: 12.5px; margin-bottom: 14px; text-align: left;
+    font-weight: 600;
+  }
+  .lock-card input[type="password"] {
+    width: 100%; background: var(--surface-2); border: 2.5px solid var(--text);
+    color: var(--text); padding: 12px 14px; border-radius: 14px;
+    font-size: 15px; text-align: center; font-weight: 700; margin-bottom: 14px;
+  }
+  .lock-card input[type="password"]:focus { outline: none; border-color: #2f8fff; box-shadow: 0 0 0 3px rgba(47,143,255,0.25); }
+  .lock-card button {
+    width: 100%; border: 2px solid var(--text); border-radius: 999px; padding: 12px;
+    font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 14px;
+    cursor: pointer; background: var(--gold); color: var(--text);
+    box-shadow: 3px 3px 0 var(--text); transition: transform .08s ease, box-shadow .08s ease;
+  }
+  .lock-card button:active { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--text); }
+  .lock-hint { color: var(--text-muted); font-size: 10.5px; margin-top: 16px; }
+</style>
+</head>
+<body>
+  <form class="lock-card" method="post" autocomplete="off">
+    <div class="lock-icon">🔒</div>
+    <h1>🥊 BS Lookup</h1>
+    <p class="sub">Accesso protetto — inserisci la password per continuare</p>
+    <?php if ($bsLookupErrore): ?>
+      <div class="lock-error"><?php echo htmlspecialchars($bsLookupErrore, ENT_QUOTES, 'UTF-8'); ?></div>
+    <?php endif; ?>
+    <input type="password" name="bs_lookup_password" placeholder="Password" autofocus required>
+    <button type="submit">Sblocca</button>
+    <div class="lock-hint">Resti collegato per <?php echo (int) BS_LOOKUP_COOKIE_DAYS; ?> giorni su questo dispositivo</div>
+  </form>
+</body>
+</html>
+<?php
+    exit;
+}
 ?>
 <!DOCTYPE html>
 <html lang="it">
@@ -9,35 +142,384 @@ if (!isAuthenticated()):
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Brawl Stars — Player Lookup</title>
-<link rel="stylesheet" href="style.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #eff6ff;
+    --surface: #ffffff;
+    --surface-2: #f2f7fe;
+    --surface-3: #e3edfc;
+    --gold: #ffc629;
+    --gold-dark: #e0a400;
+    --amber: #a9700a;
+    --blue: #2f8fff;
+    --magenta: #ff4d6d;
+    --magenta-dark: #c81e44;
+    --green: #17a34a;
+    --text: #1e2a4a;
+    --text-muted: #66759b;
+    --border: #cfe0f7;
+  }
 
-  
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: 'Nunito', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 0 0 40px;
+  }
+
+  /* ---------- Barra superiore: logo + menu pagine ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--gold);
+    border-bottom: 3px solid var(--text);
+    padding: 10px 16px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .topbar h1 {
+    font-family: 'Baloo 2', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    color: var(--text);
+    margin: 0;
+    white-space: nowrap;
+  }
+  .page-switcher {
+    margin-left: auto;
+    background: var(--surface); color: var(--text);
+    border: 2px solid var(--text); border-radius: 999px;
+    padding: 8px 14px; font-size: 13px; font-weight: 700;
+    font-family: 'Nunito', sans-serif; cursor: pointer;
+  }
+
+  .btn {
+    border: 2px solid var(--text); border-radius: 999px; padding: 9px 16px;
+    font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 13px;
+    cursor: pointer; white-space: nowrap;
+    box-shadow: 3px 3px 0 var(--text);
+    transition: transform .08s ease, box-shadow .08s ease;
+  }
+  .btn:active { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--text); }
+  .btn-primary { background: var(--gold); color: var(--text); }
+  .btn-secondary { background: var(--surface); color: var(--text); }
+
+  .content { max-width: 960px; margin: 0 auto; padding: 16px; }
+  .error {
+    background: rgba(255,77,109,0.12); border: 2px solid var(--magenta);
+    color: var(--magenta-dark); padding: 10px 14px; border-radius: 10px; font-size: 13px; font-weight: 600;
+  }
+  .loading { color: var(--text-muted); font-size: 13px; padding: 8px 0; }
+
+  /* ---------- Hero di ricerca (pagina Home) ---------- */
+  .hero-search {
+    background: linear-gradient(160deg, #ffffff 0%, #dcebff 100%);
+    border: 3px solid var(--text); border-radius: 22px;
+    padding: 32px 24px; text-align: center; margin-bottom: 18px;
+    box-shadow: 5px 5px 0 var(--text);
+  }
+  .hero-search h2 {
+    font-family: 'Baloo 2', sans-serif; font-size: 24px; margin: 0 0 6px; color: var(--text);
+  }
+  .hero-search p { color: var(--text-muted); font-size: 13px; margin: 0 0 18px; }
+  .hero-search-row {
+    display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+  }
+  .hero-search-row input {
+    background: var(--surface); border: 2.5px solid var(--text);
+    color: var(--text); padding: 12px 16px; border-radius: 14px;
+    font-size: 15px; width: 220px; text-align: center; font-weight: 700;
+  }
+  .hero-search-row input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(47,143,255,0.25); }
+  .hero-search-row .btn { padding: 12px 22px; font-size: 14px; }
+
+  /* ---------- Persone salvate (roster) ---------- */
+  .saved-players-bar {
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 4px 0 12px;
+  }
+  .saved-player-chip {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface); border: 2px solid var(--text);
+    border-radius: 16px; padding: 10px 12px;
+    cursor: pointer; position: relative;
+    box-shadow: 3px 3px 0 var(--text);
+    transition: box-shadow .1s ease, transform .1s ease, background .12s ease;
+  }
+  .saved-player-chip:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--text); background: var(--surface-2); }
+  .saved-player-chip:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--text); }
+  .saved-player-chip .avatar-sm {
+    width: 52px; height: 52px; border-radius: 13px;
+    background: var(--surface-2); border: 2.5px solid var(--gold);
+    flex-shrink: 0; object-fit: cover;
+  }
+  .saved-player-chip .info { min-width: 0; flex: 1; }
+  .saved-player-chip .kicker {
+    font-size: 9px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase;
+    color: var(--blue); margin-bottom: 2px;
+  }
+  .saved-player-chip .name-row { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+  .saved-player-chip .name {
+    font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 14.5px; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;
+  }
+  .saved-player-chip .tagline { font-size: 10.5px; color: var(--text-muted); font-family: monospace; flex-shrink: 0; }
+  .saved-player-chip .club-line {
+    font-size: 11px; color: var(--text-muted); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .saved-player-chip .trophy-badge {
+    display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+    background: var(--gold); border: 1.5px solid var(--text); border-radius: 999px;
+    padding: 4px 10px; font-size: 12px; font-weight: 800; color: var(--text);
+  }
+  .saved-player-chip.is-loading .avatar-sm,
+  .saved-player-chip.is-loading .name,
+  .saved-player-chip.is-loading .club-line {
+    background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
+    background-size: 200% 100%; animation: shimmer 1.2s infinite;
+  }
+  .saved-player-chip.is-loading .name,
+  .saved-player-chip.is-loading .club-line { display: inline-block; height: 10px; border-radius: 4px; color: transparent; }
+  .saved-player-chip.is-loading .name { width: 100px; margin-bottom: 5px; }
+  .saved-player-chip.is-loading .club-line { width: 70px; }
+  .saved-player-chip.is-error { border-color: var(--magenta); opacity: 0.8; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+  /* ---------- Riepilogo giocatore ---------- */
+  .player-strip {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--surface); border: 2.5px solid var(--text);
+    border-radius: 18px; padding: 12px 16px; margin-bottom: 16px;
+    box-shadow: 4px 4px 0 var(--text);
+    flex-wrap: wrap;
+  }
+  .player-strip img.avatar {
+    width: 52px; height: 52px; border-radius: 50%;
+    background: var(--surface-2); border: 3px solid var(--gold); flex-shrink: 0;
+  }
+  .player-name-block { min-width: 120px; }
+  .player-name-block h2 {
+    font-family: 'Baloo 2', sans-serif; font-size: 17px; margin: 0; color: var(--text);
+  }
+  .player-name-block .tag { font-size: 11px; color: var(--text-muted); font-family: monospace; }
+  .stat-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+  .pill {
+    display: flex; align-items: center; gap: 5px;
+    background: var(--surface-2); border: 1.5px solid var(--border); border-radius: 999px;
+    padding: 5px 11px; font-size: 12px; font-weight: 700; color: var(--text);
+  }
+  .pill .n { color: var(--amber); font-weight: 700; }
+  .pill.highlight { background: var(--gold); border-color: var(--text); }
+  .pill.highlight .n { color: var(--text); }
+  .player-level-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #eaf3ff, var(--blue));
+    color: #fff; font-weight: 800; font-size: 10px;
+    border: 2px solid var(--surface); margin-left: 3px;
+  }
+
+  .section-label {
+    font-family: 'Baloo 2', sans-serif; font-size: 13.5px; font-weight: 700;
+    color: var(--text); letter-spacing: normal;
+    margin: 18px 0 8px; display: flex; align-items: center; gap: 8px;
+  }
+  .section-label.toggle {
+    cursor: pointer; user-select: none; background: var(--surface);
+    border: 2px solid var(--text); border-radius: 14px; padding: 10px 12px;
+    margin: 10px 0; font-size: 14px; color: var(--text);
+    box-shadow: 2px 2px 0 var(--text);
+  }
+  .section-label.toggle:hover { background: var(--surface-2); }
+  .section-label .chev { transition: transform .15s ease; font-size: 10px; color: var(--text-muted); }
+  .section-label.is-open .chev { transform: rotate(90deg); }
+  .win-rate-badge {
+    margin-left: auto; font-size: 11px; font-weight: 700;
+    background: var(--gold); padding: 3px 10px; border-radius: 999px;
+    color: var(--text); border: 1.5px solid var(--text);
+  }
+  .collapsible-content {
+    display: grid; grid-template-rows: 0fr; opacity: 0;
+    transition: grid-template-rows .25s ease, opacity .2s ease;
+  }
+  .collapsible-content > div { overflow: hidden; }
+  .collapsible-content.is-open { grid-template-rows: 1fr; opacity: 1; }
+  .brawler-card {
+    transition: transform .12s ease, border-color .12s ease;
+  }
+  .brawler-card:hover { transform: translateY(-3px); border-color: var(--blue); }
+  .top-brawler-crown {
+    position: absolute; top: -8px; left: -6px; font-size: 15px;
+    filter: drop-shadow(0 1px 2px rgba(30,42,74,.35));
+  }
+  .copy-tag-btn {
+    background: none; border: none; color: var(--text-muted);
+    cursor: pointer; font-size: 12px; padding: 0; margin-left: 4px;
+    vertical-align: middle;
+  }
+  .copy-tag-btn:hover { color: var(--blue); }
+  .club-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--surface-2); border: 1.5px solid var(--border); border-radius: 10px; padding: 4px 10px;
+    font-size: 11px; color: var(--text); margin-top: 6px;
+    cursor: pointer; transition: background .12s ease, color .12s ease, border-color .12s ease;
+  }
+  .club-chip:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .sort-row { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; font-size: 12px; color: var(--text-muted); }
+  .sort-row select {
+    background: var(--surface); color: var(--text); border: 1.5px solid var(--text);
+    border-radius: 8px; padding: 4px 8px; font-size: 12px;
+  }
+  .brawler-detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .brawler-card { background: var(--surface); border: 2px solid var(--text); border-radius: 14px; padding: 8px; position: relative; box-shadow: 2px 2px 0 var(--text); }
+  .brawler-card-head { display: flex; align-items: center; gap: 8px; }
+  .brawler-avatar-wrap { position: relative; flex-shrink: 0; }
+  .brawler-avatar-wrap img { width: 40px; height: 40px; border-radius: 9px; background: var(--surface-2); display: block; }
+  .power-level-badge {
+    position: absolute; bottom: -4px; right: -4px;
+    display: flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #ffe9a8, var(--gold-dark));
+    color: var(--text); font-weight: 800; font-size: 10px;
+    border: 2px solid var(--surface);
+  }
+  .brawler-name-col { min-width: 0; }
+  .brawler-name-col .name { font-size: 12.5px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .brawler-name-col .trophy-line { font-size: 11px; color: var(--amber); font-weight: 600; display: flex; align-items: center; gap: 3px; }
+
+  .rank-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px;
+    border: 1.5px solid rgba(30,42,74,0.15);
+  }
+  .rank-bronze   { background: #6b3e26; color: #ffd9b3; }
+  .rank-silver   { background: #5a5f6b; color: #eef1f5; }
+  .rank-gold     { background: #7a5c12; color: #ffe28a; }
+  .rank-diamond  { background: #1e5f6b; color: #b6f2ff; }
+  .rank-mythic   { background: #6b1e4f; color: #ffb3e0; }
+  .rank-legendary{ background: #4a1e6b; color: #dcb3ff; }
+  .rank-masters  { background: linear-gradient(90deg,#ff4d8d,#ffcd3c,#4fd6ff); color: #1a1a1a; }
+
+  .item-icon-row { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 6px; }
+  .item-icon { width: 22px; height: 22px; border-radius: 5px; background: var(--surface-2); border: 1.5px solid var(--border); }
+  .item-icon-fallback {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 22px; padding: 0 6px; border-radius: 5px;
+    background: var(--surface-3); border: 1.5px dashed var(--text-muted);
+    font-size: 9px; color: var(--text); text-align: center; font-weight: 600;
+  }
+
+  /* ---------- Griglia "tutti i brawler" ---------- */
+  .brawler-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; }
+  .brawler-item {
+    text-align: center; font-size: 10.5px; color: var(--text-muted);
+    background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: 10px; padding: 6px 4px;
+  }
+  .brawler-item img { width: 44px; height: 44px; border-radius: 9px; background: var(--surface-2); }
+  .brawler-item div { margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---------- Battaglie recenti ---------- */
+  .battle-list { display: flex; flex-direction: column; gap: 6px; }
+  .battle-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: 12px; padding: 8px 12px; font-size: 12.5px;
+  }
+  .battle-row.is-ranked { border-color: var(--gold); background: linear-gradient(90deg, rgba(255,198,41,0.15), var(--surface)); }
+  .battle-result-bar { width: 4px; height: 30px; border-radius: 3px; flex-shrink: 0; }
+  .battle-result-bar.victory { background: var(--green); }
+  .battle-result-bar.defeat { background: var(--magenta); }
+  .battle-result-bar.draw, .battle-result-bar.unknown { background: var(--text-muted); }
+  .battle-main { flex: 1; min-width: 0; }
+  .battle-mode { font-weight: 700; color: var(--text); }
+  .battle-map { color: var(--text-muted); font-size: 11px; }
+  .battle-ranked-tag {
+    font-size: 9px; font-weight: 800; background: var(--gold); color: var(--text);
+    padding: 1px 6px; border-radius: 999px; margin-left: 6px; vertical-align: middle;
+  }
+  .battle-side { text-align: right; flex-shrink: 0; }
+  .battle-trophy { font-weight: 700; }
+  .battle-trophy.pos { color: var(--green); }
+  .battle-trophy.neg { color: var(--magenta-dark); }
+  .battle-time { font-size: 10.5px; color: var(--text-muted); }
+
+  .ranked-summary {
+    background: linear-gradient(135deg, rgba(255,198,41,0.18), var(--surface));
+    border: 2px solid var(--gold); border-radius: 12px;
+    padding: 10px 14px; margin-bottom: 10px; font-size: 12.5px;
+  }
+  .ranked-summary .win { color: var(--green); font-weight: 700; }
+  .ranked-summary .loss { color: var(--magenta-dark); font-weight: 700; }
+  .ranked-summary-empty {
+    background: var(--surface); border-color: var(--border); color: var(--text-muted);
+  }
+
+  .page { display: none; }
+  .page.is-active { display: block; }
+
+  /* ---------- Pagina Club ---------- */
+  .club-header {
+    background: var(--surface); border: 2.5px solid var(--text); border-radius: 16px;
+    padding: 16px; margin-bottom: 14px; box-shadow: 4px 4px 0 var(--text);
+  }
+  .club-header h2 { font-family: 'Baloo 2', sans-serif; font-size: 19px; margin: 0 0 4px; color: var(--text); }
+  .club-header .desc { font-size: 12.5px; color: var(--text-muted); margin: 6px 0 10px; }
+  .club-header .stat-pills { margin-left: 0; }
+  .member-list { display: flex; flex-direction: column; gap: 6px; }
+  .member-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: 12px; padding: 8px 12px; cursor: pointer;
+    transition: border-color .12s ease, transform .1s ease;
+  }
+  .member-row:hover { border-color: var(--blue); transform: translateX(3px); }
+  .member-role {
+    font-size: 9px; font-weight: 800; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-muted);
+  }
+  .member-role.president { background: var(--gold); color: var(--text); }
+  .member-role.vicePresident { background: var(--blue); color: #fff; }
+  .member-role.senior { background: var(--surface-3); color: var(--text); }
+  .member-name { font-weight: 600; font-size: 13px; flex: 1; min-width: 0; color: var(--text); }
+  .member-trophies { font-size: 12px; color: var(--amber); font-weight: 700; }
+
+  /* ---------- Ultimi cercati (localStorage) ---------- */
+  .chip-remove-btn {
+    position: absolute; top: -8px; right: -8px;
+    width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    background: var(--surface); border: 2px solid var(--text); border-radius: 50%;
+    color: var(--text-muted); font-size: 11px; cursor: pointer; line-height: 1;
+    box-shadow: 2px 2px 0 var(--text);
+  }
+  .chip-remove-btn:hover { color: var(--magenta-dark); }
+
+  /* ---------- Ricerca per nome / autocomplete ---------- */
+  .search-input-wrap { position: relative; width: 220px; }
+  .search-input-wrap input { width: 100%; }
+  .suggestions-box {
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+    background: var(--surface); border: 2px solid var(--text); border-radius: 14px;
+    z-index: 30; text-align: left; display: none; max-height: 260px; overflow-y: auto;
+    box-shadow: 4px 4px 0 var(--text);
+  }
+  .suggestions-box.is-open { display: block; }
+  .suggestion-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer;
+  }
+  .suggestion-item:hover, .suggestion-item.is-active { background: var(--surface-2); }
+  .suggestion-item img { width: 26px; height: 26px; border-radius: 50%; background: var(--surface-2); flex-shrink: 0; }
+  .suggestion-item .s-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
+  .suggestion-item .s-tag { font-size: 10.5px; color: var(--text-muted); font-family: monospace; }
+  .suggestion-empty { padding: 10px 12px; font-size: 12px; color: var(--text-muted); }
+</style>
 </head>
 <body>
-  <div class="login-card accesso1">
-  <h2>🔒 Pannello di Accesso</h2>
-  <p>Inserisci la password per accedere al servizio</p>
 
-  <?php if (!empty($login_error)): ?>
-    <div class="error-msg"><?= htmlspecialchars($login_error) ?></div>
-  <?php endif; ?>
-
-  <form method="POST" action="">
-    <input type="hidden" name="action" value="login">
-    <input type="password" name="password" class="input-field" placeholder="Password nascosta" required autofocus>
-    <button type="submit" class="btn-submit">Sblocca Accesso</button>
-  </form>
-</div>
-
-</body>
-</html>
-<?php
-exit;
-endif;
-?>
-<link rel="stylesheet" href="style.css"></div>
 <div class="topbar">
   <h1>🥊 BS Lookup</h1>
   <select class="page-switcher" id="pageSwitcher" onchange="cambiaPagina(this.value)">
@@ -45,6 +527,7 @@ endif;
     <option value="club">🛡️ Cerca Club</option>
     <option value="brawlers">📋 Tutti i Brawler</option>
   </select>
+  <a href="?logout=1" class="btn btn-secondary" style="padding:8px 12px; font-size:12px; text-decoration:none; display:inline-flex; align-items:center;" title="Esci dall'area protetta">🔒 Esci</a>
 </div>
 
 <div class="content">
@@ -169,11 +652,26 @@ function starPowerIcon(sp) {
 function gadgetIcon(g) {
   return iconWithFallbackChain([`https://cdn.brawlify.com/gadgets/borderless/${g.id}.png`], g.name);
 }
-// Nessun catalogo pubblico verificato esiste per le icone dei gear: badge diretto.
+// Le icone dei Gear sono locali (cartella assets/gears/), perché non esiste
+// un catalogo pubblico verificato su CDN esterni per questo tipo di icone.
+// Se il file locale manca o non è ancora stato caricato, si torna comunque
+// al badge testuale di riserva (nessun errore visibile).
+const GEAR_ICON_MAP = [
+  { match: /shield/i,       slug: 'scudo',         label: 'Scudo' },
+  { match: /vision/i,       slug: 'visione',       label: 'Visione' },
+  { match: /damage/i,       slug: 'danno',         label: 'Danno' },
+  { match: /speed/i,        slug: 'velocita',      label: 'Velocità' },
+  { match: /gadget/i,       slug: 'gadget',        label: 'Gadget' },
+  { match: /health|regen/i, slug: 'rigenerazione', label: 'Rigenerazione' },
+];
 function gearIcon(g) {
-  const safeName = escapeAttr(g.name);
-  const label = `${g.name} · lvl ${g.level ?? '?'}`;
-  return `<span class="item-icon-fallback" title="${escapeAttr(label)}">⚙️ ${safeName}</span>`;
+  const info = GEAR_ICON_MAP.find(x => x.match.test(g.name || ''));
+  const displayName = info ? info.label : g.name;
+  const label = `${displayName} · lvl ${g.level ?? '?'}`;
+  if (!info) {
+    return `<span class="item-icon-fallback" title="${escapeAttr(label)}">⚙️ ${escapeAttr(g.name)}</span>`;
+  }
+  return iconWithFallbackChain([`assets/gears/${info.slug}.png`], label);
 }
 
 function rankBadge(rank) {
@@ -525,7 +1023,8 @@ function leggiRicercheRecenti() {
 function salvaRicercaRecente(p) {
   if (!p || !p.tag) return;
   const iconId = p.icon && p.icon.id ? p.icon.id : null;
-  const entry = { tag: p.tag, name: p.name, trophies: p.trophies, iconId, ts: Date.now() };
+  const club = p.club && p.club.name ? p.club.name : null;
+  const entry = { tag: p.tag, name: p.name, trophies: p.trophies, iconId, club, ts: Date.now() };
 
   let lista = leggiRicercheRecenti().filter(x => x.tag !== entry.tag);
   lista.unshift(entry);
@@ -565,13 +1064,19 @@ function renderRicercheRecenti() {
   label.style.display = 'flex';
   wrap.innerHTML = lista.map(p => {
     const avatarUrl = p.iconId ? `https://cdn.brawlify.com/profile-icons/regular/${p.iconId}.png` : '';
+    const clubLine = p.club ? `<div class="club-line">🛡️ ${escapeAttr(p.club)}</div>` : '';
     return `
       <div class="saved-player-chip" data-tag="${escapeAttr(p.tag)}" onclick="cercaGiocatoreTag('${p.tag}')">
         <img class="avatar-sm" src="${avatarUrl}" alt="${escapeAttr(p.name)}" onerror="this.style.visibility='hidden'">
         <div class="info">
-          <div class="name">${escapeAttr(p.name)}</div>
-          <div class="sub">🏆 <span class="n">${p.trophies ?? '?'}</span></div>
+          <div class="kicker">Cercato di recente</div>
+          <div class="name-row">
+            <span class="name">${escapeAttr(p.name)}</span>
+            <span class="tagline">${escapeAttr(p.tag)}</span>
+          </div>
+          ${clubLine}
         </div>
+        <div class="trophy-badge">🏆 ${p.trophies ?? '?'}</div>
         <button class="chip-remove-btn" title="Rimuovi dalla cronologia" onclick="rimuoviRicercaRecente('${p.tag}', event)">✕</button>
       </div>
     `;
@@ -685,7 +1190,7 @@ function cercaGiocatoreTag(tag) {
 }
 
 async function initSavedPlayers() {
-  const chips = document.querySelectorAll('.saved-player-chip[data-tag]');
+  const chips = document.querySelectorAll('#savedPlayers .saved-player-chip[data-tag]');
 
   for (const chip of chips) {
     const tag = chip.getAttribute('data-tag');
@@ -693,8 +1198,9 @@ async function initSavedPlayers() {
     chip.innerHTML = `
       <div class="avatar-sm"></div>
       <div class="info">
+        <div class="kicker">Giocatore salvato</div>
         <div class="name">&nbsp;</div>
-        <div class="sub">&nbsp;</div>
+        <div class="club-line">&nbsp;</div>
       </div>
     `;
     chip.onclick = () => cercaGiocatoreTag(tag);
@@ -708,15 +1214,21 @@ async function initSavedPlayers() {
       const p = json.data;
       const iconId = p.icon && p.icon.id ? p.icon.id : null;
       const avatarUrl = iconId ? `https://cdn.brawlify.com/profile-icons/regular/${iconId}.png` : '';
+      const clubLine = p.club && p.club.name ? `<div class="club-line">🛡️ ${escapeAttr(p.club.name)}</div>` : '';
 
       aggiornaGiocatoreConosciuto(p);
       chip.classList.remove('is-loading');
       chip.innerHTML = `
         <img class="avatar-sm" src="${avatarUrl}" alt="${escapeAttr(p.name)}" onerror="this.style.visibility='hidden'">
         <div class="info">
-          <div class="name">${escapeAttr(p.name)}</div>
-          <div class="sub">🏆 <span class="n">${p.trophies}</span></div>
+          <div class="kicker">Giocatore salvato</div>
+          <div class="name-row">
+            <span class="name">${escapeAttr(p.name)}</span>
+            <span class="tagline">${escapeAttr(p.tag)}</span>
+          </div>
+          ${clubLine}
         </div>
+        <div class="trophy-badge">🏆 ${p.trophies}</div>
       `;
     } catch (err) {
       chip.classList.remove('is-loading');
@@ -724,8 +1236,9 @@ async function initSavedPlayers() {
       chip.innerHTML = `
         <div class="avatar-sm" style="display:flex;align-items:center;justify-content:center;font-size:16px;">⚠️</div>
         <div class="info">
+          <div class="kicker">Giocatore salvato</div>
           <div class="name">${escapeAttr(tag)}</div>
-          <div class="sub">Non trovato</div>
+          <div class="club-line">Non trovato</div>
         </div>
       `;
     }
